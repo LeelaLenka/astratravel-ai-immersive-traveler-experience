@@ -1,20 +1,27 @@
+import MapExplorer from './components/MapExplorer';
+import AIChatAssistant from './components/AIChatAssistant';
+import SafetyAlerts from './components/SafetyAlerts';
+import LocationSearch from './components/LocationSearch';
+import WeatherPanel from './components/WeatherPanel';
+import LocationDetailsPanel from './components/LocationDetailsPanel';
 
 import React, { useState, useEffect } from 'react';
 import { DESTINATIONS, ICONS } from './constants';
 import { Destination, TravelAlert } from './types';
-import MapExplorer from './components/MapExplorer';
-import AIChatAssistant from './components/AIChatAssistant';
-import SafetyAlerts from './components/SafetyAlerts';
+
 import VRViewer from './components/VRViewer';
-import { getSafetyAlerts } from './services/geminiService';
+import { getSafetyAlertsWithFallback } from './services/aiService';
 
 const App: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isVRMode, setIsVRMode] = useState(false);
   const [alerts, setAlerts] = useState<TravelAlert[]>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
+  const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [detailPanelId, setDetailPanelId] = useState<string | null>(null);
 
   const activeDestination = DESTINATIONS.find(d => d.id === selectedId);
+  const detailDestination = DESTINATIONS.find(d => d.id === detailPanelId);
 
   useEffect(() => {
     if (selectedId) {
@@ -28,13 +35,28 @@ const App: React.FC = () => {
     
     setIsLoadingAlerts(true);
     try {
-      const data = await getSafetyAlerts(dest.name);
+      const data = await getSafetyAlertsWithFallback(dest.name);
       setAlerts(data);
     } catch (err) {
       console.error(err);
+      // Set default alerts if both APIs fail
+      setAlerts([
+        {
+          id: '1',
+          severity: 'low',
+          type: 'info',
+          title: 'Travel Information',
+          message: 'Check official travel advisories for this destination'
+        }
+      ]);
     } finally {
       setIsLoadingAlerts(false);
     }
+  };
+
+  const handleDetailsOpen = (id: string) => {
+    setDetailPanelId(id);
+    setShowDetailsPanel(true);
   };
 
   return (
@@ -52,8 +74,10 @@ const App: React.FC = () => {
           <h1 className="text-xl font-black tracking-tight text-slate-800 uppercase italic">Astra<span className="text-indigo-600">Travel</span></h1>
         </div>
 
-        <div className="space-y-1 mb-8">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 mb-2">Featured Destinations</p>
+        <LocationSearch onSelect={setSelectedId} onDetailsOpen={handleDetailsOpen} selectedId={selectedId} />
+
+        <div className="space-y-1 mb-8 flex-1 min-h-0 overflow-y-auto">
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 mb-3 sticky top-0 bg-white">All Destinations ({DESTINATIONS.length})</p>
           {DESTINATIONS.map((dest) => (
             <button
               key={dest.id}
@@ -126,16 +150,13 @@ const App: React.FC = () => {
                   
                   {/* Floating Context Panel */}
                   <div className="absolute bottom-6 right-6 z-10 w-72 bg-white/90 backdrop-blur-md p-5 rounded-3xl shadow-2xl border border-white/30">
-                    <h5 className="text-xs font-black uppercase text-indigo-600 mb-3 tracking-widest">Real-Time Context</h5>
+                    <h5 className="text-xs font-black uppercase text-indigo-600 mb-4 tracking-widest">Real-Time Context</h5>
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-500">Local Time</span>
                         <span className="text-sm font-bold">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-slate-500">Weather</span>
-                        <span className="text-sm font-bold flex items-center gap-1">22°C Clear</span>
-                      </div>
+                      <WeatherPanel city={activeDestination.name} />
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-slate-500">Crowd Density</span>
                         <span className="text-sm font-bold text-orange-500">Moderate</span>
@@ -181,6 +202,15 @@ const App: React.FC = () => {
         <VRViewer 
           imageUrl={activeDestination.vrImageUrl} 
           onClose={() => setIsVRMode(false)} 
+        />
+      )}
+
+      {/* Location Details Panel */}
+      {detailDestination && (
+        <LocationDetailsPanel
+          destination={detailDestination}
+          onClose={() => setShowDetailsPanel(false)}
+          isVisible={showDetailsPanel}
         />
       )}
     </div>
